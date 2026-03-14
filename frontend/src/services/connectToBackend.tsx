@@ -118,5 +118,40 @@ export const connectToBackendServices = {
             console.error('Error while fetchind pdf details', error);
             throw error;
         }
-    }
+    },
+    getProcessPayment: async (moveId: string) => {
+        try {
+            const response = await apiClient.post("/payment/create-intent", { moveId });
+            return response.data;
+        } catch (error) {
+            console.error('Error while processing the payment', error);
+            throw error;
+        }
+    },
+
+    getStatusOfPayment: async (paymentStatus: string) => {
+        try {
+            const response = await apiClient.post("/payment/confirm", { paymentStatus });
+            return response.data;
+        } catch (error) {
+            console.error('Error while confirming the payment', error);
+            throw error;
+        }
+    },
+
+    getConfirmPayment: async (paymentIntentId: string) => {
+        try {
+            const response = await apiClient.post("/payment/confirm", { paymentIntentId });
+            return response.data;
+        } catch (error) {
+            console.error('Error while confirming the payment', error);
+            throw error;
+        }
+    },
+
+
+
 };
+
+
+
