@@ -1,4 +1,5 @@
 require("dotenv").config();
+const updateMovebyId = require("../src/controllers/dataFromAi")
 const app = require("./app");
 const connectDB = require("./config/db");
 
@@ -12,6 +13,8 @@ addMoveJob({
  pickup: "Delhi",
  drop: "Pune"
 });
+
+app.post("/update-from-ai", updateMovebyId);
 
 app.listen(PORT, () => {
  console.log(`Server running on port ${PORT}`);

@@ -66,7 +66,7 @@ async function startWorker() {
 
           // 3. Hit the Python FastAPI server
           // ⚠️ MAKE SURE THIS IS THE PORT 8080 PYTHON NGROK URL!
-          const aiServerUrl = 'https://geniculate-unentangled-merna.ngrok-free.dev/trigger_negotiation'; 
+          const aiServerUrl = 'http://localhost:8080/trigger_negotiation'; 
 
           const response = await axios.post(aiServerUrl, payload);
           
