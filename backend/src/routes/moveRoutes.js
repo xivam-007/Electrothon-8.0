@@ -33,6 +33,6 @@ router.get("/orders", protect, getAllOrders);
 router.get("/orders/:id", protect, getMoveById);
 
 // 👈 NEW AI WEBHOOK ROUTE (Unprotected so Python can access it)
-router.post("/ai-webhook", updateMoveFromAI); 
+// router.post("/ai-webhook", updateMoveFromAI); 
 
 module.exports = router;
