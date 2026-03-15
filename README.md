@@ -65,7 +65,7 @@ TWILIO_WHATSAPP_NUMBER=your_whatsapp_number
 TWILIO_PHONE_NUMBER=your_caller_number
 
 # AI / ML
-OPENAI_API_KEY=your_llm_api_key  # Or relevant AI agent API
+GEMINI_KEY=your_llm_api_key  # Or relevant AI agent API
 MODEL_PATH=./models/pytorch_risk_model.pth
 
 # Database
