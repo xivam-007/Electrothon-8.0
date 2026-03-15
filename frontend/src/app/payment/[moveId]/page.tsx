@@ -13,10 +13,9 @@ const stripePromise = loadStripe(
 
 export default function PaymentPage() {
 
-  // const params = useParams();
-  // const moveId = params.moveId as string;
+  const params = useParams();
+  const moveId = params.moveId as string;
 
-  const moveId  = "69b5a17ab37b5a41929b52ef";
 
   return (
     <Elements stripe={stripePromise}>

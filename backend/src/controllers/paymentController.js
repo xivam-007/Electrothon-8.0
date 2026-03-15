@@ -1,49 +1,137 @@
+// const Stripe = require("stripe");
+// const Move = require("../models/moveModel");
+
+// const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// const createPaymentIntent = async (req, res) => {
+//   try {
+//     const { moveId } = req.body;
+
+//     const move = await Move.findById(moveId);
+//     if (!move) {
+//       return res.status(404).json({ success: false, message: "Move not found" });
+//     }
+
+//     const amount = Math.round(move.price * 100);
+
+//     const paymentIntent = await stripe.paymentIntents.create({
+//       amount: amount,
+//       currency: "inr",
+//       metadata: { moveId: moveId.toString() },
+//       automatic_payment_methods: { enabled: true },
+//     });
+
+//     res.json({ success: true, clientSecret: paymentIntent.client_secret });
+//   } catch (err) {
+//     console.error("Payment Intent Error:", err);
+//     res.status(500).json({ success: false, message: "Failed to create payment intent" });
+//   }
+// };
+
+// const checkPaymentStatus = async (req, res) => {
+//   try {
+//     const { paymentIntentId } = req.body;
+
+//     if (!paymentIntentId) {
+//       return res.status(400).json({ success: false, message: "paymentIntentId is required" });
+//     }
+
+//     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+//     res.json({
+//       success: true,
+//       status: paymentIntent.status,
+//       isPaid: paymentIntent.status === "succeeded",
+//       amount: paymentIntent.amount / 100,
+//       currency: paymentIntent.currency,
+//       moveId: paymentIntent.metadata?.moveId || null,
+//     });
+//   } catch (err) {
+//     console.error("Check Payment Status Error:", err);
+//     res.status(500).json({ success: false, message: "Failed to check payment status", error: err.message });
+//   }
+// };
+
+// const confirmPayment = async (req, res) => {
+//   try {
+//     const { paymentIntentId } = req.body;
+
+//     if (!paymentIntentId) {
+//       return res.status(400).json({ success: false, message: "paymentIntentId is required" });
+//     }
+
+//     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+//     if (!paymentIntent) {
+//       return res.status(404).json({ success: false, message: "Payment not found" });
+//     }
+
+//     const moveId = paymentIntent.metadata?.moveId;
+//     if (!moveId) {
+//       return res.status(400).json({ success: false, message: "Move ID not found in payment metadata" });
+//     }
+
+//     if (paymentIntent.status === "succeeded") {
+//       // ✅ FIX: Always update regardless of current paymentStatus — no guard condition
+//       const updatedMove = await Move.findByIdAndUpdate(
+//         moveId,
+//         {
+//           paymentStatus: "paid",
+//           paymentIntentId: paymentIntentId,
+//           status: "PAYMENT",
+//         },
+//         { new: true }
+//       );
+
+//       if (!updatedMove) {
+//         return res.status(404).json({ success: false, message: "Move not found" });
+//       }
+
+//       notifyPaymentCompleted(7217843077, moveId); 
+
+//       console.log(`✅ Payment confirmed for Move ID: ${moveId}`);
+//       console.log("Updated Move:", updatedMove);
+//     }
+
+//     res.json({ success: true, status: paymentIntent.status, moveId: moveId });
+//   } catch (err) {
+//     console.error("Confirm Payment Error:", err);
+//     res.status(500).json({ success: false, message: "Failed to confirm payment", error: err.message });
+//   }
+// };
+
+// module.exports = {
+//   createPaymentIntent,
+//   checkPaymentStatus,
+//   confirmPayment,
+// };
+
 const Stripe = require("stripe");
 const Move = require("../models/moveModel");
-
+const {notifyPaymentCompleted} = require("../utils/whatsApp")
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const createPaymentIntent = async (req, res) => {
   try {
     const { moveId } = req.body;
 
-    // Find move in DB
     const move = await Move.findById(moveId);
-
     if (!move) {
-      return res.status(404).json({
-        success: false,
-        message: "Move not found",
-      });
+      return res.status(404).json({ success: false, message: "Move not found" });
     }
 
-    // Assume move.price exists (in rupees)
-    const amount = move.price * 100; // Stripe uses paise (smallest unit)
+    const amount = Math.round(move.price * 100);
 
-    // Create payment intent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amount,
       currency: "inr",
-      metadata: {
-        moveId: moveId,
-      },
-      automatic_payment_methods: {
-        enabled: true,
-      },
+      metadata: { moveId: moveId.toString() },
+      automatic_payment_methods: { enabled: true },
     });
 
-    res.json({
-      success: true,
-      clientSecret: paymentIntent.client_secret,
-    });
-
+    res.json({ success: true, clientSecret: paymentIntent.client_secret });
   } catch (err) {
     console.error("Payment Intent Error:", err);
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to create payment intent",
-    });
+    res.status(500).json({ success: false, message: "Failed to create payment intent" });
   }
 };
 
@@ -51,107 +139,70 @@ const checkPaymentStatus = async (req, res) => {
   try {
     const { paymentIntentId } = req.body;
 
-    // Validate input
     if (!paymentIntentId) {
-      return res.status(400).json({
-        success: false,
-        message: "paymentIntentId is required",
-      });
+      return res.status(400).json({ success: false, message: "paymentIntentId is required" });
     }
 
-    // Retrieve payment intent from Stripe
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
-    // Determine payment status
-    const isPaid = paymentIntent.status === "succeeded";
 
     res.json({
       success: true,
       status: paymentIntent.status,
-      isPaid: isPaid,
-      amount: paymentIntent.amount / 100, // convert paise to INR
+      isPaid: paymentIntent.status === "succeeded",
+      amount: paymentIntent.amount / 100,
       currency: paymentIntent.currency,
       moveId: paymentIntent.metadata?.moveId || null,
     });
-
   } catch (err) {
     console.error("Check Payment Status Error:", err);
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to check payment status",
-      error: err.message,
-    });
+    res.status(500).json({ success: false, message: "Failed to check payment status", error: err.message });
   }
 };
-
 
 const confirmPayment = async (req, res) => {
   try {
     const { paymentIntentId } = req.body;
 
-    // Validate input
     if (!paymentIntentId) {
-      return res.status(400).json({
-        success: false,
-        message: "paymentIntentId is required",
-      });
+      return res.status(400).json({ success: false, message: "paymentIntentId is required" });
     }
 
-    // Retrieve payment from Stripe
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
     if (!paymentIntent) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
+      return res.status(404).json({ success: false, message: "Payment not found" });
     }
 
     const moveId = paymentIntent.metadata?.moveId;
-
     if (!moveId) {
-      return res.status(400).json({
-        success: false,
-        message: "Move ID not found in payment metadata",
-      });
+      return res.status(400).json({ success: false, message: "Move ID not found in payment metadata" });
     }
 
-    // If payment succeeded → update DB
     if (paymentIntent.status === "succeeded") {
-      const move = await Move.findById(moveId);
+      // ✅ FIX: Always update regardless of current paymentStatus — no guard condition
+      const updatedMove = await Move.findByIdAndUpdate(
+        moveId,
+        {
+          paymentStatus: "paid",
+          paymentIntentId: paymentIntentId,
+          status: "PAYMENT",
+        },
+        { new: true }
+      );
 
-      if (!move) {
-        return res.status(404).json({
-          success: false,
-          message: "Move not found",
-        });
+      await notifyPaymentCompleted(7366883380, moveId);
+
+      if (!updatedMove) {
+        return res.status(404).json({ success: false, message: "Move not found" });
       }
 
-      // Prevent duplicate updates
-      if (move.paymentStatus !== "paid") {
-        move.paymentStatus = "paid";
-        move.paymentIntentId = paymentIntentId;
-        move.status = "confirmed";
-
-        await move.save();
-      }
+      console.log(`✅ Payment confirmed for Move ID: ${moveId}`);
+      console.log("Updated Move:", updatedMove);
     }
 
-    res.json({
-      success: true,
-      status: paymentIntent.status,
-      moveId: moveId,
-    });
-
+    res.json({ success: true, status: paymentIntent.status, moveId: moveId });
   } catch (err) {
     console.error("Confirm Payment Error:", err);
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to confirm payment",
-      error: err.message,
-    });
+    res.status(500).json({ success: false, message: "Failed to confirm payment", error: err.message });
   }
 };
 

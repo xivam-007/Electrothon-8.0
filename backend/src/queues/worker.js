@@ -58,6 +58,7 @@ async function startWorker() {
             pickup_time: pickupTime || "morning",
             
             // 👇 Now topMover is successfully defined and fetched!
+            moverId: String(topMover._id || "N/A"),
             rating: Number(topMover.rating || 3.0),
             total_reviews: Number(topMover.totalRating || 50)
           };

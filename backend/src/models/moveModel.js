@@ -32,7 +32,7 @@ const moveSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    
+
     pickupTime: {
       type: String,
       required: true,
@@ -55,7 +55,7 @@ const moveSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: [ "PENDING", "INITIATED", "LOADED", "INTRANSIT", "DELIVERED", "CANCELLED" ],
+      enum: ["PENDING", "INITIATED", "CONFIRMED", "PAYMENT", "INTRANSIT", "DELIVERED", "CANCELLED"],
       default: "PENDING",
     },
 
@@ -69,11 +69,19 @@ const moveSchema = new mongoose.Schema(
 
     riskScore: {
       type: Number
-    }, 
+    },
 
     distance: {
       type: String,
-    }
+    },
+    paymentStatus: {
+      type: String,
+      default: "pending"
+    },
+
+    paymentIntentId: {
+      type: String
+    },
   },
   { timestamps: true }
 );

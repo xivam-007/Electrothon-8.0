@@ -283,7 +283,7 @@ const getVehicle = (id: string) => VEHICLES.find((v) => v.id === id) ?? null;
 // ── Orders interface ──────────────────────────────────────────────────────────
 export interface Orders {
   _id: string;
-  status: "PENDING" | "INITIATED" | "LOADED" | "INTRANSIT" | "DELIVERED" | "CANCELLED";
+  status: "PENDING" | "INITIATED" | "PAYMENT" | "CONFIRMED" | "INTRANSIT" | "DELIVERED" | "CANCELLED";
   vehicleId: string;
   pickupLocation: string;
   dropoffLocation: string;
@@ -297,7 +297,8 @@ export interface Orders {
 const statusConfig: Record<string, { label: string; dot: string; badge: string }> = {
   pending:   { label: "Pending",    dot: "bg-amber-400",   badge: "bg-amber-50 text-amber-700 ring-amber-200"   },
   initiated: { label: "Initiated",  dot: "bg-blue-400",    badge: "bg-blue-50 text-blue-700 ring-blue-200"      },
-  loaded:    { label: "Loaded",     dot: "bg-orange-400",  badge: "bg-orange-50 text-orange-700 ring-orange-200" },
+  confirmed: { label: "Confirmed",  dot: "bg-sky-400",     badge: "bg-sky-50 text-sky-700 ring-sky-200"           },
+  payment:   { label: "Payment",    dot: "bg-yellow-400",  badge: "bg-yellow-50 text-yellow-700 ring-yellow-200" },
   intransit: { label: "In Transit", dot: "bg-violet-400",  badge: "bg-violet-50 text-violet-700 ring-violet-200" },
   delivered: { label: "Delivered",  dot: "bg-emerald-400", badge: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
   cancelled: { label: "Cancelled",  dot: "bg-rose-400",    badge: "bg-rose-50 text-rose-700 ring-rose-200"      },
@@ -379,7 +380,7 @@ const DashboardPage = () => {
 
   const delivered = orders.filter(o => normalizeStatus(o.status) === 'delivered').length;
   const inTransit = orders.filter(o => normalizeStatus(o.status) === 'intransit').length;
-  const pending   = orders.filter(o => ['pending', 'initiated', 'loaded'].includes(normalizeStatus(o.status))).length;
+  const pending   = orders.filter(o => ['pending', 'initiated', 'confirmed'].includes(normalizeStatus(o.status))).length;
 
   // dot color map (for inline styles since we can't use dynamic Tailwind)
   const dotColorMap: Record<string, string> = {

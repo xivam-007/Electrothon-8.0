@@ -5,6 +5,7 @@ const getDistance = require("../services/distanceService");
 const getCoordinates = require("../controllers/getCordinates");
 const fetchAndStoreNearbyMovers = require("../services/findMoversNearMe");
 const startWorker = require("../queues/worker");
+const MoveProvider = require("../models/moverModel"); // Import the schema! (For the new moverByID function)
 
 const createMoveRequest = async (req, res) => {
   try {
@@ -79,29 +80,25 @@ const createMoveRequest = async (req, res) => {
 const getMoveById = async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // 👇 ADD THIS TO SEE WHAT EXPRESS IS ACTUALLY RECEIVING
+    console.log("🔍 Requested ID from URL is:", id);
+    console.log("🔍 Type of ID is:", typeof id);
 
-    const move = await Move.findOne({
-      _id: id,
-      user: req.user._id
-    });
+    const move = await Move.findOne({ _id: id.trim(), user: req.user._id });
 
     if (!move) {
+      console.log("❌ Mongoose returned null for this ID.");
       return res.status(404).json({
         success: false,
         message: "Move not found",
       });
     }
 
-    res.json({
-      success: true,
-      data: move,
-    });
+    res.json({ success: true, data: move });
 
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -167,9 +164,70 @@ const updateMoveFromAI = async (req, res) => {
   }
 };
 
+// ✅ NAYI FUNCTION — Payment confirm hone ke baad status update
+const updateMoveStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const { moveId } = req.params;
+
+    if (!status) {
+      return res.status(400).json({ success: false, message: "Status is required" });
+    }
+
+    const move = await Move.findByIdAndUpdate(
+      moveId,
+      { status },
+      { new: true }
+    );
+
+    if (!move) {
+      return res.status(404).json({ success: false, message: "Move not found" });
+    }
+
+    console.log(`✅ Move ${moveId} status updated to: ${status}`);
+
+    res.status(200).json({ success: true, move });
+  } catch (error) {
+    console.error("❌ Status Update Error:", error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const moverByID = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // 1. Find the move
+    const move = await Move.findById(id);
+    if (!move) {
+      return res.status(404).json({ success: false, message: "Move not found" });
+    }
+
+    // Check if a mover is actually assigned to this move
+    if (!move.bestMover) {
+      return res.status(404).json({ success: false, message: "No mover assigned to this move yet" });
+    }
+
+    // 2. Find the mover (Pass the ID directly, NOT as an object)
+    const mover = await MoveProvider.findById(move.bestMover);
+    
+    if (!mover) {
+      return res.status(404).json({ success: false, message: "Mover not found" });
+    }
+
+    // 3. Return the data
+    res.json({ success: true, data: mover });
+    
+  } catch (error) {
+    console.error("Error in moverByID:", error); // Helpful for debugging your terminal
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
 module.exports = {
+  moverByID,
   createMoveRequest,
   getMoveById,
   getAllOrders,
+  updateMoveStatus,
   updateMoveFromAI
 };

@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import {
-  CardElement,
+  CardNumberElement,
+  CardExpiryElement,
+  CardCvcElement,
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
-import type { StripeCardElement } from "@stripe/stripe-js";
-
+import { connectToBackendServices } from "@/services/connectToBackend"; // Update path if needed
+import { useRouter } from "next/navigation";
 interface CheckoutFormProps {
   moveId: string;
 }
@@ -18,11 +20,27 @@ interface CreateIntentResponse {
   message?: string;
 }
 
+// ✅ FIXED: Placed stripeStyle outside the component
+const stripeStyle = {
+  style: {
+    base: {
+      fontSize: "15px",
+      fontFamily: "'DM Sans', sans-serif",
+      color: "#0f172a",
+      letterSpacing: "0.04em",
+      fontWeight: "600",
+      "::placeholder": { color: "#94a3b8", fontWeight: "400" },
+    },
+    invalid: { color: "#ef4444", iconColor: "#ef4444" },
+  },
+};
+
 export default function CheckoutForm({ moveId }: CheckoutFormProps) {
-  const stripe    = useStripe();
-  const elements  = useElements();
-  const [loading,      setLoading]      = useState<boolean>(false);
+  const stripe = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -32,79 +50,76 @@ export default function CheckoutForm({ moveId }: CheckoutFormProps) {
 
     try {
       /* ─────────────────────────────
-         1️⃣ Create Payment Intent
+         1️⃣ Validate Move Details
       ──────────────────────────────*/
-      const response = await fetch(
-        "http://localhost:8000/api/payment/create-intent",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ moveId }),
-        }
-      );
-      const data: CreateIntentResponse = await response.json();
-      if (!data.success || !data.clientSecret) {
-        throw new Error(data.message || "Failed to initialize payment");
+      const moveData = await connectToBackendServices.getUserOrderById(moveId);
+      if (!moveData || moveData.success === false) {
+        throw new Error(moveData.message || "Move not found in database");
       }
-      const clientSecret = data.clientSecret;
 
       /* ─────────────────────────────
-         2️⃣ Confirm Card Payment
+         2️⃣ Create Payment Intent
       ──────────────────────────────*/
-      const cardElement = elements.getElement(CardElement) as StripeCardElement;
-      if (!cardElement) throw new Error("Card element not found");
+      const intentData: CreateIntentResponse = await connectToBackendServices.getProcessPayment(moveId);
+      console.log("Intent Data:", intentData);
+      if (!intentData.success || !intentData.clientSecret) {
+        throw new Error(intentData.message || "Failed to initialize payment");
+      }
 
-      const result = await stripe.confirmCardPayment(clientSecret, {
+      console.log("Confirming payment with clientSecret:", intentData.clientSecret);
+      /* ─────────────────────────────
+         3️⃣ Confirm Card Payment via Stripe
+      ──────────────────────────────*/
+      const cardElement = elements.getElement(CardNumberElement);
+      if (!cardElement) throw new Error("Card element not found");
+      console.log("Card Element found, proceeding with payment confirmation...");
+
+
+      const result = await stripe.confirmCardPayment(intentData.clientSecret, {
         payment_method: { card: cardElement },
       });
+      console.log("Stripe confirmCardPayment result:", result);
       if (result.error) throw new Error(result.error.message);
 
       const paymentIntentId = result.paymentIntent?.id;
       if (!paymentIntentId) throw new Error("PaymentIntent ID not returned");
 
       /* ─────────────────────────────
-         3️⃣ Confirm Payment Backend
+         4️⃣ Confirm Payment on Backend (Updates DB Status automatically)
       ──────────────────────────────*/
-      await fetch("http://localhost:8000/api/payment/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentIntentId }),
-      });
+      const confirmData = await connectToBackendServices.getConfirmPayment(paymentIntentId);
+      console.log("Confirm Data:", confirmData);
+      if (!confirmData.success) {
+        throw new Error(confirmData.message || "Payment confirmation failed on server");
+      }
 
-      alert("Payment successful 🎉");
+      alert("Payment successful 🎉 Move confirmed!");
+      router.push(`/dashboard/${moveId}`);
+
     } catch (error: any) {
       console.error("Payment Error:", error);
-      setErrorMessage(error.message || "Payment failed");
+      // Ensure we extract the error message safely, whether it's an Axios error or standard JS error
+      const msg = error.response?.data?.message || error.message || "Payment failed";
+      setErrorMessage(msg);
     }
+    
     setLoading(false);
   };
 
-  /* ── UI ── */
   return (
     <div className="cf-root">
       <style>{CSS}</style>
-
-      {/* ambient bg */}
       <div className="cf-orb cf-orb1" />
       <div className="cf-orb cf-orb2" />
       <div className="cf-grid" />
-
-      {/* center wrapper */}
       <div className="cf-center">
-
-        {/* escrow trust banner */}
         <div className="cf-trust-bar cf-in cf-d0">
           <span className="cf-trust-dot" />
           <span>🔒 Funds held in escrow — released only after delivery</span>
         </div>
 
-        {/* main card */}
         <div className="cf-card cf-in cf-d1">
-
-          {/* card shimmer */}
           <div className="cf-shimmer" />
-
-          {/* header */}
           <div className="cf-card-hdr">
             <div className="cf-logo">
               <div className="cf-logo-box">🧈</div>
@@ -116,7 +131,6 @@ export default function CheckoutForm({ moveId }: CheckoutFormProps) {
             </div>
           </div>
 
-          {/* amount display */}
           <div className="cf-amount-section cf-in cf-d2">
             <div className="cf-amount-icon">💳</div>
             <div>
@@ -126,18 +140,13 @@ export default function CheckoutForm({ moveId }: CheckoutFormProps) {
             <div className="cf-amount-badge">✦ Safe</div>
           </div>
 
-          {/* divider */}
           <div className="cf-divider" />
 
-          {/* form */}
           <form onSubmit={handleSubmit} className="cf-form">
-
-            {/* section label */}
             <div className="cf-sec-lbl cf-in cf-d3">
               <span>01</span>&nbsp; Card Details
             </div>
 
-            {/* ── Card Number field ── */}
             <div className="cf-field cf-in cf-d3">
               <label className="cf-lbl">
                 <span>💳</span> Card Number
@@ -156,30 +165,12 @@ export default function CheckoutForm({ moveId }: CheckoutFormProps) {
                   </svg>
                 </div>
                 <div className="cf-stripe-wrap">
-                  <CardElement
-                    options={{
-                      style: {
-                        base: {
-                          fontSize: "15px",
-                          fontFamily: "'DM Sans', sans-serif",
-                          color: "#0f172a",
-                          letterSpacing: "0.04em",
-                          fontWeight: "600",
-                          "::placeholder": { color: "#94a3b8", fontWeight: "400" },
-                        },
-                        invalid: { color: "#ef4444", iconColor: "#ef4444" },
-                      },
-                      hidePostalCode: true,
-                    }}
-                  />
+                  <CardNumberElement options={stripeStyle} />
                 </div>
               </div>
             </div>
 
-            {/* ── Expiry + CVV row ── */}
-            <div className="cf-row-2 cf-in cf-d4">
-
-              {/* Expiry */}
+            <div className="cf-row2 cf-in cf-d4">
               <div className="cf-field">
                 <label className="cf-lbl">
                   <span>📅</span> Expiry Date
@@ -193,14 +184,12 @@ export default function CheckoutForm({ moveId }: CheckoutFormProps) {
                       <line x1="3" y1="10" x2="21" y2="10"/>
                     </svg>
                   </div>
-                  <div className="cf-fake-input">
-                    <span className="cf-fake-placeholder">MM / YY</span>
+                  <div className="cf-stripe-wrap">
+                    <CardExpiryElement options={stripeStyle} />
                   </div>
-                  <div className="cf-expiry-hint">Included above ↑</div>
                 </div>
               </div>
 
-              {/* CVV */}
               <div className="cf-field">
                 <label className="cf-lbl">
                   <span>🔐</span> CVV / CVC
@@ -212,28 +201,22 @@ export default function CheckoutForm({ moveId }: CheckoutFormProps) {
                       <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                     </svg>
                   </div>
-                  <div className="cf-fake-input">
-                    <span className="cf-fake-placeholder">• • •</span>
+                  <div className="cf-stripe-wrap">
+                    <CardCvcElement options={stripeStyle} />
                   </div>
-                  <div className="cf-cvv-hint">3 digits back</div>
+                  <div className="cf-cvv-tip">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    3 digits
+                  </div>
                 </div>
               </div>
-
             </div>
 
-            {/* Stripe note */}
-            <div className="cf-stripe-note cf-in cf-d4">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              Card details are entered in the field above — Expiry &amp; CVV are part of the Stripe card input.
-            </div>
-
-            {/* security note */}
-            <div className="cf-sec-note cf-in cf-d4">
+            <div className="cf-sec-note cf-in cf-d5">
               <span>🛡️</span>
               <span>256-bit SSL encryption &nbsp;·&nbsp; PCI-DSS compliant &nbsp;·&nbsp; Powered by Stripe</span>
             </div>
 
-            {/* error */}
             {errorMessage && (
               <div className="cf-error">
                 <span>⚠️</span>
@@ -241,7 +224,6 @@ export default function CheckoutForm({ moveId }: CheckoutFormProps) {
               </div>
             )}
 
-            {/* submit */}
             <button
               type="submit"
               disabled={!stripe || loading}
@@ -263,27 +245,17 @@ export default function CheckoutForm({ moveId }: CheckoutFormProps) {
                 </span>
               )}
             </button>
-
           </form>
 
-          {/* footer */}
           <div className="cf-footer">
-            <div className="cf-footer-item">
-              <span>🔒</span> End-to-end encrypted
-            </div>
+            <div className="cf-footer-item"><span>🔒</span> End-to-end encrypted</div>
             <div className="cf-footer-dot" />
-            <div className="cf-footer-item">
-              <span>💰</span> Escrow protected
-            </div>
+            <div className="cf-footer-item"><span>💰</span> Escrow protected</div>
             <div className="cf-footer-dot" />
-            <div className="cf-footer-item">
-              <span>↩️</span> Refundable
-            </div>
+            <div className="cf-footer-item"><span>↩️</span> Refundable</div>
           </div>
-
         </div>
 
-        {/* below-card trust row */}
         <div className="cf-powered cf-in cf-d5">
           <span>Powered by</span>
           <span className="cf-stripe-badge">
@@ -293,7 +265,6 @@ export default function CheckoutForm({ moveId }: CheckoutFormProps) {
           </span>
           <span>&nbsp;·&nbsp; Makhan Move Escrow</span>
         </div>
-
       </div>
     </div>
   );
@@ -307,16 +278,13 @@ const CSS = `
 .cf-root {
   min-height: 100vh; width: 100%;
   background: #f0f4ff;
-  font-family: 'DM Sans', sans-serif;
-  color: #0f172a;
+  font-family: 'DM Sans', sans-serif; color: #0f172a;
   display: flex; align-items: center; justify-content: center;
   padding: 24px; position: relative; overflow: hidden;
 }
 
-/* ── ambient bg ── */
 .cf-orb {
-  position: fixed; border-radius: 50%;
-  pointer-events: none; z-index: 0;
+  position: fixed; border-radius: 50%; pointer-events: none; z-index: 0;
   animation: cfOrbFloat 9s ease-in-out infinite;
 }
 .cf-orb1 { top:-120px; right:-80px; width:520px; height:520px; background:radial-gradient(circle,rgba(37,99,235,.08),transparent 68%); }
@@ -328,21 +296,18 @@ const CSS = `
   background-size: 28px 28px;
 }
 
-/* ── layout ── */
 .cf-center {
   position: relative; z-index: 1;
   width: 100%; max-width: 460px;
   display: flex; flex-direction: column; align-items: stretch; gap: 14px;
 }
 
-/* ── trust bar ── */
 .cf-trust-bar {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   background: rgba(255,255,255,.85); border: 1px solid #bfdbfe;
   border-radius: 100px; padding: 8px 18px;
   font-size: 12px; font-weight: 600; color: #1d4ed8;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 2px 8px rgba(37,99,235,.1);
+  backdrop-filter: blur(8px); box-shadow: 0 2px 8px rgba(37,99,235,.1);
 }
 .cf-trust-dot {
   width: 6px; height: 6px; border-radius: 50%; background: #22c55e;
@@ -350,7 +315,6 @@ const CSS = `
 }
 @keyframes cfPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.55)} }
 
-/* ── main card ── */
 .cf-card {
   background: #fff; border: 1px solid #e2e8f0; border-radius: 24px;
   overflow: hidden; position: relative;
@@ -359,18 +323,15 @@ const CSS = `
 }
 .cf-card:hover { box-shadow: 0 10px 48px rgba(15,23,42,.12), 0 2px 8px rgba(15,23,42,.06); }
 
-/* shimmer sweep */
 .cf-shimmer {
   position: absolute; inset: 0; z-index: 0; pointer-events: none;
   background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.5) 50%, transparent 65%);
-  background-size: 200% 100%; opacity: 0;
-  transition: opacity .3s;
+  background-size: 200% 100%; opacity: 0; transition: opacity .3s;
   animation: cfShimmer 2.5s ease-in-out infinite paused;
 }
 .cf-card:hover .cf-shimmer { opacity: 1; animation-play-state: running; }
 @keyframes cfShimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
-/* card header */
 .cf-card-hdr {
   display: flex; align-items: center; justify-content: space-between;
   padding: 20px 26px 16px; border-bottom: 1px solid #f1f5f9; background: #fafbff;
@@ -392,11 +353,11 @@ const CSS = `
 .cf-logo-txt b { color: #2563eb; }
 .cf-secure-badge {
   display: flex; align-items: center; gap: 5px;
-  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 100px;
-  padding: 4px 11px; font-size: 11px; font-weight: 700; color: #15803d;
+  background: #f0fdf4; border: 1px solid #bbf7d0;
+  border-radius: 100px; padding: 4px 11px;
+  font-size: 11px; font-weight: 700; color: #15803d;
 }
 
-/* amount section */
 .cf-amount-section {
   display: flex; align-items: center; gap: 14px;
   padding: 18px 26px; border-bottom: 1px solid #f1f5f9;
@@ -420,13 +381,14 @@ const CSS = `
   animation: cfPulse 2.5s ease-in-out infinite;
 }
 
-/* divider */
 .cf-divider { height: 1px; background: #f1f5f9; }
 
-/* form */
-.cf-form { padding: 22px 26px 18px; display: flex; flex-direction: column; gap: 16px; position: relative; z-index: 1; }
+.cf-form {
+  padding: 22px 26px 18px;
+  display: flex; flex-direction: column; gap: 16px;
+  position: relative; z-index: 1;
+}
 
-/* section label */
 .cf-sec-lbl {
   font-family: 'Fraunces', Georgia, serif;
   font-size: 10px; font-weight: 700; letter-spacing: .18em;
@@ -435,7 +397,6 @@ const CSS = `
 }
 .cf-sec-lbl::after { content: ''; flex: 1; height: 1px; background: #f1f5f9; }
 
-/* field */
 .cf-field { display: flex; flex-direction: column; gap: 8px; }
 .cf-lbl {
   font-family: 'Fraunces', Georgia, serif;
@@ -444,9 +405,7 @@ const CSS = `
   display: flex; align-items: center; gap: 6px;
 }
 
-.cf-card-brands {
-  display: flex; gap: 5px; margin-left: auto;
-}
+.cf-card-brands { display: flex; gap: 5px; margin-left: auto; }
 .cf-brand {
   font-size: 9px; font-weight: 800; letter-spacing: .06em;
   padding: 2px 7px; border-radius: 4px;
@@ -456,13 +415,12 @@ const CSS = `
 .cf-brand-ru   { background: #1a6b3c; }
 .cf-brand-amex { background: #2e77bc; }
 
-/* ── input box (shared) ── */
+/* ── shared input box ── */
 .cf-input-box {
   display: flex; align-items: center; gap: 10px;
   background: #fff; border: 1.5px solid #cbd5e1; border-radius: 13px;
   padding: 13px 16px;
   transition: border-color .22s, box-shadow .22s, background .22s;
-  cursor: text; position: relative;
 }
 .cf-input-box:focus-within {
   border-color: #2563eb;
@@ -471,43 +429,39 @@ const CSS = `
 }
 .cf-input-box--card { padding: 13px 16px 13px 12px; }
 .cf-input-icon { flex-shrink: 0; display: flex; align-items: center; }
-.cf-stripe-wrap { flex: 1; }
+.cf-stripe-wrap { flex: 1; min-width: 0; }
 
 /* ── expiry + cvv row ── */
-.cf-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cf-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-.cf-input-box--half { padding: 13px 14px; flex-direction: column; align-items: flex-start; gap: 6px; cursor: default; }
-.cf-input-box--half .cf-input-icon { align-self: flex-start; }
+.cf-input-box--half { padding: 13px 12px; }
 
-.cf-input-box--expiry { border-color: #bfdbfe; background: #eff6ff; }
-.cf-input-box--expiry:hover { border-color: #93c5fd; }
-
-.cf-input-box--cvv { border-color: #ddd6fe; background: #f5f3ff; }
-.cf-input-box--cvv:hover { border-color: #c4b5fd; }
-
-.cf-fake-input {
-  display: flex; align-items: center; gap: 6px; width: 100%;
+.cf-input-box--expiry {
+  border-color: #bfdbfe;
+  background: #f8fbff;
 }
-.cf-fake-placeholder {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 14px; font-weight: 700; color: #94a3b8; letter-spacing: .08em;
+.cf-input-box--expiry:focus-within {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 4px rgba(37,99,235,.09);
 }
-.cf-expiry-hint {
-  font-size: 10px; font-weight: 600; color: #3b82f6;
-  background: #eff6ff; padding: 2px 8px; border-radius: 100px;
-  border: 1px solid #bfdbfe; white-space: nowrap;
+
+.cf-input-box--cvv {
+  border-color: #ddd6fe;
+  background: #faf8ff;
 }
-.cf-cvv-hint {
+.cf-input-box--cvv:focus-within {
+  border-color: #7c3aed;
+  background: #f5f3ff;
+  box-shadow: 0 0 0 4px rgba(124,58,237,.09);
+}
+
+.cf-cvv-tip {
+  display: flex; align-items: center; gap: 3px;
   font-size: 10px; font-weight: 600; color: #7c3aed;
-  background: #f5f3ff; padding: 2px 8px; border-radius: 100px;
-  border: 1px solid #ddd6fe; white-space: nowrap;
-}
-
-/* stripe note */
-.cf-stripe-note {
-  display: flex; align-items: center; gap: 7px;
-  background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
-  padding: 9px 13px; font-size: 11px; color: #92400e; font-weight: 500; line-height: 1.5;
+  background: #f5f3ff; border: 1px solid #ddd6fe;
+  padding: 2px 8px; border-radius: 100px;
+  white-space: nowrap; flex-shrink: 0;
 }
 
 /* security note */
@@ -532,13 +486,14 @@ const CSS = `
 .cf-btn {
   width: 100%; padding: 16px 24px; border-radius: 14px; border: none; cursor: pointer;
   font-family: 'Fraunces', Georgia, serif; font-size: 16px; font-weight: 700;
-  letter-spacing: .01em; background: linear-gradient(135deg,#1d4ed8,#4f46e5); color: #fff;
+  letter-spacing: .01em;
+  background: linear-gradient(135deg,#1d4ed8,#4f46e5); color: #fff;
   box-shadow: 0 4px 18px rgba(37,99,235,.30), inset 0 1px 0 rgba(255,255,255,.15);
   transition: all .25s cubic-bezier(.22,1,.36,1); margin-top: 4px;
 }
 .cf-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(37,99,235,.42), inset 0 1px 0 rgba(255,255,255,.15); }
 .cf-btn:active:not(:disabled) { transform: translateY(0); }
-.cf-btn-loading { background: #e2e8f0 !important; color: #94a3b8 !important; cursor: not-allowed; box-shadow: none !important; transform: none !important; }
+.cf-btn-loading  { background: #e2e8f0 !important; color: #94a3b8 !important; cursor: not-allowed; box-shadow: none !important; transform: none !important; }
 .cf-btn-disabled { background: #e2e8f0 !important; color: #94a3b8 !important; cursor: not-allowed; box-shadow: none !important; }
 .cf-btn-inner { display: flex; align-items: center; justify-content: center; gap: 9px; }
 .cf-btn-arrow { transition: transform .2s; display: inline-block; }
@@ -550,7 +505,7 @@ const CSS = `
 }
 @keyframes cfSpin { to { transform: rotate(360deg); } }
 
-/* card footer */
+/* footer */
 .cf-footer {
   display: flex; align-items: center; justify-content: center;
   gap: 10px; padding: 14px 26px;
@@ -561,20 +516,15 @@ const CSS = `
 .cf-footer-item { display: flex; align-items: center; gap: 4px; }
 .cf-footer-dot { width: 3px; height: 3px; border-radius: 50%; background: #cbd5e1; flex-shrink: 0; }
 
-/* powered by */
 .cf-powered {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   font-size: 11px; color: #94a3b8; font-weight: 500;
 }
 .cf-stripe-badge { display: flex; align-items: center; }
 
-/* ── stagger fade-up ── */
+/* stagger fade-up */
 .cf-in { opacity: 0; transform: translateY(18px); animation: cfUp .55s cubic-bezier(.22,1,.36,1) forwards; }
-.cf-d0 { animation-delay: .04s; }
-.cf-d1 { animation-delay: .12s; }
-.cf-d2 { animation-delay: .20s; }
-.cf-d3 { animation-delay: .28s; }
-.cf-d4 { animation-delay: .35s; }
-.cf-d5 { animation-delay: .42s; }
+.cf-d0{animation-delay:.04s} .cf-d1{animation-delay:.12s} .cf-d2{animation-delay:.20s}
+.cf-d3{animation-delay:.28s} .cf-d4{animation-delay:.35s} .cf-d5{animation-delay:.42s}
 @keyframes cfUp { to { opacity: 1; transform: translateY(0); } }
 `;

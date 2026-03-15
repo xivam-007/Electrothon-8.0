@@ -119,6 +119,16 @@ export const connectToBackendServices = {
             throw error;
         }
     },
+
+    getMoverDetails: async (moveID: string) => {
+        try {
+            const response = await apiClient.get(`/moves/mover/${moveID}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error while fetching the mover details', error);
+            throw error;
+        }
+    },
     getProcessPayment: async (moveId: string) => {
         try {
             const response = await apiClient.post("/payment/create-intent", { moveId });
