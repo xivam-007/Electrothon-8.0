@@ -32,14 +32,14 @@ Makhan Move requires only 4 basic details: **Pickup Location, Dropoff Location, 
 
 ## 🛠️ Tech Stack
 
-* **Frontend:** [Insert your frontend framework, e.g., React.js / Next.js]
-* **Backend:** [Insert your backend, e.g., Node.js / Python FastAPI]
+* **Frontend:** Next.js
+* **Backend:** Node.js & Python FastAPI
 * **AI & Machine Learning:** * PyTorch (Risk Analysis Model)
   * LLM/AI Voice Agent (For automated calling & JSON summarization)
 * **APIs & Integrations:**
   * **Google Maps/Places API:** Geolocation and mover discovery
   * **Twilio:** Voice calls, OTPs, and WhatsApp Business API integrations
-* **Database:** [Insert your DB, e.g., PostgreSQL / MongoDB]
+* **Database:** MongoDB
 
 ---
 
